@@ -115,7 +115,7 @@ class RSSToEpubConverter:
             safe_title = 'post'
         
         # Add hash of post_id to ensure uniqueness
-        id_hash = hashlib.md5(post_id.encode('utf-8')).hexdigest()[:8]
+        id_hash = hashlib.sha256(post_id.encode('utf-8')).hexdigest()[:8]
         filename = f"{safe_title}_{id_hash}.epub"
         
         # Write EPUB file
@@ -177,7 +177,7 @@ class RSSToEpubConverter:
                 
             except Exception as e:
                 print(f"Error creating EPUB for post '{entry.get('title', 'Unknown')}' (ID: {post_id}): {e}")
-                print(f"Skipping this post - it will be retried on the next run.")
+                print(f"Skipping this post - it will be attempted again on the next run since it was not marked as processed.")
                 continue
         
         print(f"\nProcessed {new_posts_count} new post(s)")
