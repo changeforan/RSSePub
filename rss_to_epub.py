@@ -40,6 +40,7 @@ class RSSToEpubConverter:
         """Save a new post ID to the history file."""
         with open(self.history_file, 'a', encoding='utf-8') as f:
             f.write(f"{post_id}\n")
+            f.flush()  # Ensure data is written to disk immediately
     
     def _clean_html_content(self, html_content):
         """Clean and extract text from HTML content."""
