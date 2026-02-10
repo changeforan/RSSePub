@@ -6,6 +6,7 @@ Monitors an RSS feed and converts new posts into EPUB files.
 
 import os
 import sys
+import hashlib
 import feedparser
 from ebooklib import epub
 from bs4 import BeautifulSoup
@@ -105,7 +106,7 @@ class RSSToEpubConverter:
         # Define spine
         book.spine = ['nav', chapter]
         
-        # Generate safe filename from title
+        # Generate safe filename from title with unique identifier
         safe_title = "".join(
             c for c in title if c.isalnum() or c in (' ', '-', '_')
         ).strip()
@@ -113,7 +114,9 @@ class RSSToEpubConverter:
         if not safe_title:
             safe_title = 'post'
         
-        filename = f"{safe_title}.epub"
+        # Add hash of post_id to ensure uniqueness
+        id_hash = hashlib.md5(post_id.encode('utf-8')).hexdigest()[:8]
+        filename = f"{safe_title}_{id_hash}.epub"
         
         # Write EPUB file
         epub.write_epub(filename, book)
@@ -173,7 +176,8 @@ class RSSToEpubConverter:
                 new_posts_count += 1
                 
             except Exception as e:
-                print(f"Error creating EPUB for post {post_id}: {e}")
+                print(f"Error creating EPUB for post '{entry.get('title', 'Unknown')}' (ID: {post_id}): {e}")
+                print(f"Skipping this post - it will be retried on the next run.")
                 continue
         
         print(f"\nProcessed {new_posts_count} new post(s)")
