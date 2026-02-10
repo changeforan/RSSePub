@@ -110,9 +110,11 @@ class RSSToEpubConverter:
         book.spine = ['nav', chapter]
         
         # Generate safe filename from title with unique identifier
+        # Replace spaces with underscores, keep alphanumeric, hyphens, and underscores
         safe_title = "".join(
-            c for c in title if c.isalnum() or c in (' ', '-', '_')
-        ).strip()
+            c if c.isalnum() or c in ('-', '_') else '_' if c == ' ' else ''
+            for c in title
+        ).strip('_')
         safe_title = safe_title[:50]  # Limit length
         if not safe_title:
             safe_title = 'post'
@@ -172,9 +174,9 @@ class RSSToEpubConverter:
                 epub_file = self._create_epub(entry)
                 print(f"Created EPUB: {epub_file}")
                 
-                # Save the post ID to history
-                self._save_post_id(post_id)
+                # Update in-memory set first, then save to file for better consistency
                 self.seen_posts.add(post_id)
+                self._save_post_id(post_id)
                 
                 new_posts_count += 1
                 
