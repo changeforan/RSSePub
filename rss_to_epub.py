@@ -8,6 +8,7 @@ import os
 import sys
 import hashlib
 import html
+import time
 import feedparser
 from ebooklib import epub
 from bs4 import BeautifulSoup
@@ -16,17 +17,23 @@ from bs4 import BeautifulSoup
 class RSSToEpubConverter:
     """Converts RSS feed posts to EPUB files."""
     
-    def __init__(self, rss_url, history_file='seen_posts.txt'):
+    def __init__(self, rss_url, history_file='seen_posts.txt', output_dir='output'):
         """
         Initialize the converter.
         
         Args:
             rss_url: URL of the RSS feed to monitor
             history_file: Path to file tracking seen post IDs
+            output_dir: Directory to save EPUB files to
         """
         self.rss_url = rss_url
         self.history_file = history_file
+        self.output_dir = output_dir
         self.seen_posts = self._load_history()
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
     
     def _load_history(self):
         """Load the history of seen post IDs from file."""
@@ -124,10 +131,11 @@ class RSSToEpubConverter:
         id_hash = hashlib.sha256(post_id.encode('utf-8')).hexdigest()[:16]
         filename = f"{safe_title}_{id_hash}.epub"
         
-        # Write EPUB file
-        epub.write_epub(filename, book)
+        # Write EPUB file to output directory
+        filepath = os.path.join(self.output_dir, filename)
+        epub.write_epub(filepath, book)
         
-        return filename
+        return filepath
     
     def process_feed(self):
         """
@@ -190,17 +198,192 @@ class RSSToEpubConverter:
         return new_posts_count
 
 
+class RSSFeedMonitor:
+    """Long-running service that monitors multiple RSS feeds."""
+    
+    def __init__(self, feed_list_file='rss_feed.txt', output_dir='output', poll_interval=300):
+        """
+        Initialize the feed monitor.
+        
+        Args:
+            feed_list_file: Path to file containing RSS feed URLs (one per line)
+            output_dir: Directory to save EPUB files to
+            poll_interval: Seconds to wait between feed checks (default: 300 = 5 minutes)
+        """
+        self.feed_list_file = feed_list_file
+        self.output_dir = output_dir
+        self.poll_interval = poll_interval
+        self.converters = {}
+        self.last_feed_list_mtime = None
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(self.output_dir):
+            os.makedirs(self.output_dir)
+    
+    def _load_feed_list(self):
+        """Load the list of RSS feed URLs from the feed list file."""
+        if not os.path.exists(self.feed_list_file):
+            print(f"Warning: Feed list file '{self.feed_list_file}' not found.")
+            return []
+        
+        feeds = []
+        with open(self.feed_list_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                # Skip empty lines and comments
+                if line and not line.startswith('#'):
+                    feeds.append(line)
+        
+        return feeds
+    
+    def _check_feed_list_updated(self):
+        """Check if the feed list file has been modified."""
+        if not os.path.exists(self.feed_list_file):
+            return False
+        
+        current_mtime = os.path.getmtime(self.feed_list_file)
+        
+        if self.last_feed_list_mtime is None:
+            self.last_feed_list_mtime = current_mtime
+            return True
+        
+        if current_mtime > self.last_feed_list_mtime:
+            self.last_feed_list_mtime = current_mtime
+            return True
+        
+        return False
+    
+    def _update_converters(self):
+        """Update the list of feed converters based on the feed list file."""
+        feeds = self._load_feed_list()
+        
+        if not feeds:
+            print(f"No feeds found in '{self.feed_list_file}'")
+            return
+        
+        # Create a set of current feeds for comparison
+        current_feeds = set(feeds)
+        existing_feeds = set(self.converters.keys())
+        
+        # Add new feeds
+        new_feeds = current_feeds - existing_feeds
+        for feed_url in new_feeds:
+            # Create a unique history file for each feed
+            feed_hash = hashlib.sha256(feed_url.encode('utf-8')).hexdigest()[:16]
+            history_file = f'seen_posts_{feed_hash}.txt'
+            self.converters[feed_url] = RSSToEpubConverter(
+                feed_url, 
+                history_file=history_file,
+                output_dir=self.output_dir
+            )
+            print(f"Added new feed: {feed_url}")
+        
+        # Remove feeds that are no longer in the list
+        removed_feeds = existing_feeds - current_feeds
+        for feed_url in removed_feeds:
+            del self.converters[feed_url]
+            print(f"Removed feed: {feed_url}")
+    
+    def run(self):
+        """Start the monitoring service."""
+        print(f"RSS Feed Monitor started")
+        print(f"Feed list file: {self.feed_list_file}")
+        print(f"Output directory: {self.output_dir}")
+        print(f"Poll interval: {self.poll_interval} seconds")
+        print("-" * 60)
+        
+        # Initial load of feeds
+        self._update_converters()
+        
+        if not self.converters:
+            print(f"\nError: No feeds to monitor. Please add RSS feed URLs to '{self.feed_list_file}'")
+            print("Each URL should be on a separate line.")
+            return
+        
+        print(f"\nMonitoring {len(self.converters)} feed(s)...")
+        print("Press Ctrl+C to stop\n")
+        
+        try:
+            while True:
+                # Check if feed list has been updated
+                if self._check_feed_list_updated():
+                    print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} - Feed list updated, reloading...")
+                    self._update_converters()
+                
+                # Process each feed
+                print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} - Checking feeds...")
+                for feed_url, converter in self.converters.items():
+                    try:
+                        converter.process_feed()
+                    except Exception as e:
+                        print(f"Error processing feed {feed_url}: {e}")
+                
+                # Wait before next check
+                print(f"\nWaiting {self.poll_interval} seconds until next check...")
+                time.sleep(self.poll_interval)
+                
+        except KeyboardInterrupt:
+            print("\n\nMonitoring stopped by user")
+
+
+
 def main():
     """Main entry point."""
     if len(sys.argv) < 2:
-        print("Usage: python rss_to_epub.py <RSS_FEED_URL>")
-        print("Example: python rss_to_epub.py https://example.com/feed.rss")
+        print("RSS to EPUB Converter")
+        print("\nUsage:")
+        print("  Single feed mode:  python rss_to_epub.py <RSS_FEED_URL>")
+        print("  Monitor mode:      python rss_to_epub.py --monitor [options]")
+        print("\nMonitor mode options:")
+        print("  --feed-list FILE   Path to feed list file (default: rss_feed.txt)")
+        print("  --output DIR       Output directory for EPUB files (default: output)")
+        print("  --interval SECONDS Polling interval in seconds (default: 300)")
+        print("\nExamples:")
+        print("  python rss_to_epub.py https://example.com/feed.rss")
+        print("  python rss_to_epub.py --monitor")
+        print("  python rss_to_epub.py --monitor --interval 600")
         sys.exit(1)
     
-    rss_url = sys.argv[1]
-    
-    converter = RSSToEpubConverter(rss_url)
-    converter.process_feed()
+    # Check if running in monitor mode
+    if sys.argv[1] == '--monitor':
+        # Parse monitor mode arguments
+        feed_list_file = 'rss_feed.txt'
+        output_dir = 'output'
+        poll_interval = 300
+        
+        i = 2
+        while i < len(sys.argv):
+            if sys.argv[i] == '--feed-list' and i + 1 < len(sys.argv):
+                feed_list_file = sys.argv[i + 1]
+                i += 2
+            elif sys.argv[i] == '--output' and i + 1 < len(sys.argv):
+                output_dir = sys.argv[i + 1]
+                i += 2
+            elif sys.argv[i] == '--interval' and i + 1 < len(sys.argv):
+                try:
+                    poll_interval = int(sys.argv[i + 1])
+                except ValueError:
+                    print(f"Error: Invalid interval value '{sys.argv[i + 1]}'")
+                    sys.exit(1)
+                i += 2
+            else:
+                print(f"Error: Unknown argument '{sys.argv[i]}'")
+                sys.exit(1)
+        
+        # Run monitor service
+        monitor = RSSFeedMonitor(
+            feed_list_file=feed_list_file,
+            output_dir=output_dir,
+            poll_interval=poll_interval
+        )
+        monitor.run()
+    else:
+        # Single feed mode (backward compatibility)
+        rss_url = sys.argv[1]
+        output_dir = 'output'
+        
+        converter = RSSToEpubConverter(rss_url, output_dir=output_dir)
+        converter.process_feed()
 
 
 if __name__ == '__main__':
