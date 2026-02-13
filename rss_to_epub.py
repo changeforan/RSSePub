@@ -305,13 +305,14 @@ class RSSFeedMonitor:
         
         try:
             while True:
+                print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} - Checking feeds...")
+                
                 # Check if feed list has been updated
                 if self._check_feed_list_updated():
-                    print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} - Feed list updated, reloading...")
+                    print(f"Feed list updated, reloading...")
                     self._update_converters()
                 
                 # Process each feed
-                print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} - Checking feeds...")
                 for feed_url, converter in self.converters.items():
                     try:
                         converter.process_feed()
@@ -362,6 +363,9 @@ def main():
             elif sys.argv[i] == '--interval' and i + 1 < len(sys.argv):
                 try:
                     poll_interval = int(sys.argv[i + 1])
+                    if poll_interval <= 0:
+                        print(f"Error: Interval must be a positive number, got '{poll_interval}'")
+                        sys.exit(1)
                 except ValueError:
                     print(f"Error: Invalid interval value '{sys.argv[i + 1]}'")
                     sys.exit(1)
