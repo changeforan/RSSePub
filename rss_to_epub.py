@@ -361,26 +361,26 @@ def main():
         output_dir = 'output'
         poll_interval = 300
         
-        i = 2
-        while i < len(sys.argv):
-            if sys.argv[i] == '--feed-list' and i + 1 < len(sys.argv):
-                feed_list_file = sys.argv[i + 1]
-                i += 2
-            elif sys.argv[i] == '--output' and i + 1 < len(sys.argv):
-                output_dir = sys.argv[i + 1]
-                i += 2
-            elif sys.argv[i] == '--interval' and i + 1 < len(sys.argv):
+        arg_index = 2
+        while arg_index < len(sys.argv):
+            if sys.argv[arg_index] == '--feed-list' and arg_index + 1 < len(sys.argv):
+                feed_list_file = sys.argv[arg_index + 1]
+                arg_index += 2
+            elif sys.argv[arg_index] == '--output' and arg_index + 1 < len(sys.argv):
+                output_dir = sys.argv[arg_index + 1]
+                arg_index += 2
+            elif sys.argv[arg_index] == '--interval' and arg_index + 1 < len(sys.argv):
                 try:
-                    poll_interval = float(sys.argv[i + 1])
+                    poll_interval = float(sys.argv[arg_index + 1])
                     if poll_interval <= 0:
-                        print(f"Error: Interval must be a positive number, got '{poll_interval}'")
+                        print(f"Error: Interval must be a positive number, got '{sys.argv[arg_index + 1]}'")
                         sys.exit(1)
                 except ValueError:
-                    print(f"Error: Invalid interval value '{sys.argv[i + 1]}'")
+                    print(f"Error: Invalid interval value '{sys.argv[arg_index + 1]}'")
                     sys.exit(1)
-                i += 2
+                arg_index += 2
             else:
-                print(f"Error: Unknown argument '{sys.argv[i]}'")
+                print(f"Error: Unknown argument '{sys.argv[arg_index]}'")
                 sys.exit(1)
         
         # Run monitor service
