@@ -237,16 +237,18 @@ class RSSFeedMonitor:
         return feeds
     
     def _check_feed_list_updated(self):
-        """Check if the feed list file has been modified."""
+        """Check if the feed list file has been modified since last check."""
         if not os.path.exists(self.feed_list_file):
             return False
         
         current_mtime = os.path.getmtime(self.feed_list_file)
         
+        # Initialize on first call, but don't consider it an update
         if self.last_feed_list_mtime is None:
             self.last_feed_list_mtime = current_mtime
-            return True
+            return False
         
+        # Check if file has been modified
         if current_mtime > self.last_feed_list_mtime:
             self.last_feed_list_mtime = current_mtime
             return True
@@ -292,7 +294,9 @@ class RSSFeedMonitor:
         print(f"Poll interval: {self.poll_interval} seconds")
         print("-" * 60)
         
-        # Initial load of feeds
+        # Initial load of feeds and set up the mtime tracking
+        if os.path.exists(self.feed_list_file):
+            self.last_feed_list_mtime = os.path.getmtime(self.feed_list_file)
         self._update_converters()
         
         if not self.converters:
@@ -305,14 +309,19 @@ class RSSFeedMonitor:
         
         try:
             while True:
-                print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} - Checking feeds...")
-                
-                # Check if feed list has been updated
+                # Check if feed list has been updated and reload if needed
                 if self._check_feed_list_updated():
-                    print(f"Feed list updated, reloading...")
+                    print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} - Feed list updated, reloading...")
                     self._update_converters()
+                    
+                    # Skip to next iteration if there are no feeds
+                    if not self.converters:
+                        print(f"No feeds to monitor. Waiting for feed list...")
+                        time.sleep(self.poll_interval)
+                        continue
                 
                 # Process each feed
+                print(f"\n{time.strftime('%Y-%m-%d %H:%M:%S')} - Checking feeds...")
                 for feed_url, converter in self.converters.items():
                     try:
                         converter.process_feed()
@@ -362,7 +371,7 @@ def main():
                 i += 2
             elif sys.argv[i] == '--interval' and i + 1 < len(sys.argv):
                 try:
-                    poll_interval = int(sys.argv[i + 1])
+                    poll_interval = float(sys.argv[i + 1])
                     if poll_interval <= 0:
                         print(f"Error: Interval must be a positive number, got '{poll_interval}'")
                         sys.exit(1)
