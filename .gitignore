@@ -208,5 +208,8 @@ __marimo__/
 
 # RSSePub specific files
 seen_posts.txt
+seen_posts_*.txt
 *.epub
 test_feed.xml
+rss_feed.txt
+output/
